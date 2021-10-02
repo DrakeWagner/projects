@@ -1,0 +1,1113 @@
+---
+title: 'Disaster Relief Project: Part I'
+author: "Drake Wagner"
+date: "`r format(Sys.Date(), '%b %d, %Y')`"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+    theme: united
+    highlight: tango
+---
+
+<!--- Below are global settings for knitr. You can override any of them by adding the changes to individual chunks --->
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(error=TRUE,        # Keep compiling upon error
+                      collapse=FALSE,    # collapse by default
+                      echo=TRUE,         # echo code by default
+                      comment = "#>",    # change comment character
+                      fig.width = 5.5,     # set figure width
+                      fig.align = "center",# set figure position
+                      out.width = "49%", # set width of displayed images
+                      warning=TRUE,      # show R warnings
+                      message=TRUE)      # show R messages
+```
+
+<!--- Change font sizes (or other css modifications) --->
+<style>
+h1.title {
+  font-size: 2.2em; /* Title font size */
+}
+h1 {
+  font-size: 2em;   /* Header 1 font size */
+}
+h2 {
+  font-size: 1.5em;
+}
+h3 {
+  font-size: 1.2em;
+}
+pre {
+  font-size: 0.8em;  /* Code and R output font size */
+}
+</style>
+
+
+
+**SYS 6018 | Spring 2021 | University of Virginia **
+
+*******************************************
+
+# Introduction 
+
+Following the devastation and destruction caused by the earthquake in Haiti in 2010, many of country's residents were displaced and cut off from food and water sources. Due to the earthquake, communication systems and roads were destroyed, complicating the problem of locating the displaced civilians. One solution was to have an aircraft fly over to collect imagery of the ground, which would hopefully allow for anyone viewing the data to localize the makeshift shelters of the displaced. However, this was a time sensitive issue, and the vast amount of imagery was too much to be sorted through manually. The solution to this was to use data-mining algorithms to search the images quickly and effectively in order to locate those displaced, and communicate the locations to rescue workers. This project is aimed at simulating what occurred in 2010, to show the importance and effectiveness of data mining. This will be done by testing different algorithms on imagery data collected from the actual disaster in 2010, and then determining which methods would be most accurate and timely.
+
+# Training Data / EDA
+
+Load data, explore data, etc. 
+
+```{r load-packages, warning=FALSE, message=FALSE}
+setwd('~/git/sys-6018/')
+# Load Required Packages
+# NOTE: tidyverse is not loading correctly, so most of this project will be done in base r.
+library('ggplot2')
+library('dplyr')
+library('boot')
+library('stringr')
+library('caret')
+library('pROC')
+library('glmnet')
+
+data <- read.csv('HaitiPixels (1).csv')
+attach(data)
+summary(data)
+colnames(data)
+levels(data$Class) 
+
+data$tarp <- str_detect(data$Class, 'Blue Tarp') # if tarp, add to new column
+data$tarp <- factor(as.numeric(data$tarp))
+# exploring color correlations
+GGally::ggpairs(data)
+```
+Significant, positive linear correlations between all interactions within the dataset. Blue tarp correlates highest with the color blue, as it should.
+
+
+# Model Training
+
+## Set-up 
+```{r}
+set.seed(311)
+index <- createDataPartition(y=data$tarp,
+                             times=1,
+                             p=0.5,
+                             list=FALSE)
+train <- data[index, ]
+test <- data[-index, ]
+```
+
+## Logistic Regression
+```{r}
+set.seed(311)
+fit_glm <- glm(tarp ~ .-Class,
+                family='binomial',
+                data=data)
+summary(fit_glm)
+
+# Crossval
+ctrl <- trainControl(method='cv',
+                     number=5,
+                     savePredictions = TRUE)
+logmod <- train(tarp~.-Class,
+                data=train,
+                method='glm',
+                trControl=ctrl)
+logmod$results
+
+
+# Prediction
+glm_predict <- predict(fit_glm,
+                    newdata=test,
+                    family='binomial',
+                    type='response')
+
+# error rate
+glm_err <- mean(ifelse(glm_predict>=.5,
+            'tarp',
+            'no_tarp')==test$tarp)
+glm_err
+
+# Confusion matrix
+glm_table <- table(Predicted = ifelse(glm_predict>=.5,
+                         'Blue Tarp Present',
+                         'No Blue Tarp Present'),
+                          True = test$tarp)
+glm_table
+# Optimal thresholds are calculated later in the analysis. For now I am keeping p=0.5.
+
+# roc
+glm_roc<-roc(test$tarp,glm_predict)
+plot(glm_roc)
+auc(glm_roc)
+
+```
+
+
+## LDA
+```{r}
+set.seed(311)
+LDA <- MASS::lda(tarp ~ Red + Green + Blue,
+           data=data,
+           family='binomial')
+
+### cross validation
+ctrl <- trainControl(method='cv',
+                     number=7)
+ldamod <- train(tarp ~ .-Class,
+                data=data,
+                method='lda',
+                trControl=ctrl)
+
+# prediction
+lda_predict <- predict(LDA,
+        family='binomial',
+        type='response',
+        newdata=test)
+summary(lda_predict)
+
+
+# Confusion matrix
+lda_table <- table(Predicted = ifelse(lda_predict$x>=.5,
+                         'Blue Tarp Present',
+                         'No Blue Tarp Present'),
+                          True = test$tarp)
+lda_table
+
+# roc
+lda_roc <- roc(test$tarp,lda_predict$x)
+plot(lda_roc)
+auc(lda_roc)
+
+```
+
+## QDA
+```{r}
+set.seed(311)
+QDA <- MASS::qda(tarp ~.-Class,
+                    data=data,
+                    family='binomial')
+
+### cross validation
+ctrl <- trainControl(method='cv',
+                     number=7)
+qdamod <- train(tarp~.-Class,
+                data=data,
+                method = 'qda',
+                trControl=ctrl)
+
+# prediction
+qda_predict <- predict(QDA,
+        family='binomial',
+        type='response',
+        newdata=test)
+summary(qda_predict)
+
+# confusion matrix
+confusionMatrix(test$tarp,
+                qda_predict$class)
+
+# roc
+qda_roc <- roc(test$tarp, as.numeric(qda_predict$class))
+plot(qda_roc)
+auc(qda_roc)
+
+```
+
+## KNN
+```{r, echo=TRUE}
+KNN <- knn3(tarp~.-Class,
+            data=train)
+
+# cross validation
+ctrl <- trainControl(method='cv',
+                     number=7)
+knn_mod <- train(tarp~.-Class,
+                 method='knn',
+                 data=train,
+                 trControl=ctrl)
+
+# find best k value:
+knnbestval <- knn_mod$bestTune
+KNN_best <- knn3(tarp~.-Class,
+                 data=train,
+                 k=knnbestval) # new best model
+
+
+# prediction
+knn_predict <- predict(KNN_best,
+                       newdata=test, 
+                       type='class')
+
+# confusion matrix
+knn_table <- confusionMatrix(table(predicted=knn_predict,
+                                   actual=test$tarp))
+
+# roc
+knn_roc <- roc(test$tarp,
+               as.numeric(knn_predict))
+plot(knn_roc)
+auc(knn_roc)
+```
+
+### Tuning Parameter $k$
+Best KNN parameter: k=9
+This tuning parameter was found to be the best by creating a KNN model from the training data, then selecting its 'bestTune', giving up 5 as the most effective k nearest neighbor value. K=5 was then specified in an updated prediction model (knn_predict).
+```{r}
+knn_table
+plot(knn_mod)
+
+```
+
+## Penalized Logistic Regression (ElasticNet)
+```{r, echo=TRUE}
+# see ISLR 6.9
+
+lm_fit <- lm(formula(tarp~.-Class),
+             data=train)
+
+# cross validation
+set.seed(311)
+ctrl <- trainControl('cv',
+                     number=5)
+elastic_mod <- train(tarp ~.-Class,
+                     data=train,
+                     method='glmnet',
+                     trControl=ctrl)
+
+elastic_mod$bestTune # tuning parameters
+coef(elastic_mod$finalModel,
+     elastic_mod$bestTune$lambda)
+
+elastic_prediction <- predict(elastic_mod, newdata=test)
+
+confusionMatrix(table(predicted=elastic_prediction,
+                      actual=test$tarp))
+
+# roc
+elastic_roc <- roc(test$tarp, as.numeric(elastic_prediction))
+plot(elastic_roc)
+auc(elastic_roc)
+
+```
+
+
+## Random Forest 
+```{r}
+library(randomForest)
+rfdata <- randomForest(tarp ~ Red + Blue + Green,
+                       data=train,
+                       mtry=2,
+                       importance=TRUE)
+rfdata
+set.seed(311)
+
+ctrl <- trainControl(method='cv',
+                     number = 10,
+                     savePredictions=TRUE)
+rfmod <- train(tarp~Red+Blue+Green,
+               data=train,
+               method='rf',
+               trControl=ctrl,
+               importance=TRUE)
+
+# Tuning
+rfbest <- rfmod$bestTune
+rfbest
+
+# preds
+rf_preds <- predict(rfdata, 
+                    newdata=test,
+                    family='binomial',
+                    mtry=rfbest,
+                    type='response')
+rf_preds <- as.data.frame(rf_preds)
+rf_preds <- as.factor(rf_preds$rf_preds)
+
+# Confusion Matrix
+confusionMatrix(reference=test$tarp, data=rf_preds)
+
+# roc
+rf_roc <- roc(test$tarp, as.numeric(rf_preds))
+plot(rf_roc)
+auc(rf_roc)
+```
+
+## Support Vector Machines
+```{r}
+library('e1071')
+# data partition
+n = nrow(data)
+set.seed(0908)
+# train = sample(n, size=800) %>% sort()
+# test = -train
+
+svm_linear = svm(tarp ~ ., data=train,
+    type = "C-classification",    # ensure classifier
+    kernel = "linear",            # linear kernel
+    cost = .01                    # cost setting
+    )
+tune.out <- tune(svm, tarp~Red+Blue+Green, data=train, 
+                type="C-classification",  kernel = "linear",
+                ranges=list(cost=c(.1, 1, 5, 10, 100, 1000)))
+summary(tune.out)
+fit.best <- tune.out$best.model
+lin_pred <- predict(fit.best, test)
+confusionMatrix(data=lin_pred, reference=test$tarp)
+
+
+svm_polynomial = svm(tarp ~ ., data=train,
+    type = "C-classification",
+    kernel = "polynomial",
+    cost = .01
+)
+poly.tune.out <- tune(svm, tarp~Red+Blue+Green, data=train, 
+                type="C-classification",  kernel = "polynomial",
+                ranges=list(cost=c(.1, 1, 5, 10, 100, 1000)))
+summary(poly.tune.out)
+fit.best <- poly.tune.out$best.model
+poly_pred <- predict(fit.best, test)
+confusionMatrix(data=poly_pred, reference=test$tarp)
+
+
+svm_radial = svm(tarp ~ ., data=train,
+    type = "C-classification",
+    kernel = "radial",
+    cost = .01
+    )
+rad.tune.out <- tune(svm, tarp~Red+Blue+Green, data=train, 
+                type="C-classification",  kernel = "radial",
+                ranges=list(cost=c(.1, 1, 5, 10, 100, 1000)))
+summary(rad.tune.out)
+fit.best <- rad.tune.out$best.model
+rad_pred <- predict(fit.best, test)
+confusionMatrix(data=rad_pred, reference=test$tarp)
+
+svm_comp <- list(tune.out$best.performance,
+                 rad.tune.out$best.performance,
+                 poly.tune.out$best.performance)
+
+svm_comp_df <- as.data.frame(svm_comp)
+colnames(svm_comp_df) <- c('Linear Kernel',
+                           'Radial kernel',
+                           'Polynomial kernel')
+svm_comp_df
+
+svm_best <- rad.tune.out$best.model
+svm_pred <- predict(svm_best, test, decision.values = TRUE)
+svm_fit <- attributes(svm_pred)$decision.values
+confusionMatrix(data=svm_pred,
+                reference=test$tarp)
+
+# roc
+svm_roc <- roc(test$tarp, as.numeric(svm_pred))
+plot(svm_roc)
+auc(svm_roc)
+
+
+svm_list <- list(svm_linear, svm_polynomial, svm_radial) # sig excluded
+for (i in svm_list) {
+  print(summary(i))
+}
+```
+```{r, echo=FALSE}
+# # error rates
+# eval <- function(pred, truth) {
+#   mean(pred != truth)
+# }
+# library(tibble)
+# # tibble(kernel="linear", cost = .01,
+# #        train.error = eval(predict(svm_linear, train), data$tarp[train]),
+# #        test.error = eval(predict(svm_linear, test), data$tarp[test])) %>%
+# #   knitr::kable(digits=3)
+# 
+# # optimal cost
+# set.seed(1)
+# data$tarp <- as.factor(data$tarp)
+# tune.out <- tune(svm, tarp~., data=train, 
+#                 type="C-classification",  kernel = "linear",
+#                 ranges=list(cost=10^seq(-2,1, length=10) ))
+# summary(tune.out) # optimal cost is 10 or greater
+# 
+# # optimal error rates
+# fit.best <- tune.out$best.model
+# # perf.linear <- tibble(kernel="linear", 
+# #   cost = fit.best$cost,
+# #   cv.error = tune.out$best.performance,
+# #   train.error = eval(predict(svm_linear, data[train, ]), data$tarp[train]),
+# #   test.error = eval(predict(svm_linear, data[test, ]), data$tarp[test])) %>% knitr::kable(digits=3)
+# # perf.linear
+# 
+# # prediction
+# pred <- predict(fit.best, test)
+# confusionMatrix(data=pred, reference=test$tarp)
+
+```
+
+
+```{r}
+for (vec in svm_list) {
+  print(c(summary(vec)['call'], 
+          summary(vec)['tot.nSV']))
+}
+
+```
+
+
+### Tuning Parameters
+
+**NOTE: PART II same as above plus add Random Forest and SVM to Model Training.**
+
+```{r}
+elastic_mod$bestTune # tuning parameters
+# alpha = 1
+# lambda = 8.427e-05
+coef(elastic_mod$finalModel, elastic_mod$bestTune$lambda)
+```
+I used the bestTune method on my Penalized Logarithmic Regression model to find that the best elastic net tuning parameter is lambda=8.427025e-05.
+
+## Threshold Selection
+The best thresholds were calculated using the pROC package's coords() function.
+```{r}
+coords(glm_roc,'best',ret='threshold')
+coords(lda_roc,'best',ret='threshold')
+coords(qda_roc,'best',ret='threshold')
+coords(knn_roc,'best',ret='threshold')
+coords(elastic_roc,'best',ret='threshold')
+coords(rf_roc, 'best', ret='threshold')
+coords(svm_roc, 'best', ret='threshold')
+```
+
+# Results (Cross-Validation)
+```{relastic_mod, echo=TRUE}
+# CV table
+glm_stats <- c(coords(glm_roc,'best',ret='threshold'),
+coords(glm_roc,'best',ret='accuracy'),
+coords(glm_roc,'best',ret='tpr'),
+coords(glm_roc,'best',ret='fpr'),
+coords(glm_roc,'best',ret='precision'),
+auc=auc(glm_roc)
+)
+
+lda_stats <- c(coords(lda_roc,'best',ret='threshold'),
+coords(lda_roc,'best',ret='accuracy'),
+coords(lda_roc,'best',ret='tpr'),
+coords(lda_roc,'best',ret='fpr'),
+coords(lda_roc,'best',ret='precision'),
+auc=auc(lda_roc)
+)
+
+qda_stats <- c(coords(qda_roc,'best',ret='threshold'),
+coords(qda_roc,'best',ret='accuracy'),
+coords(qda_roc,'best',ret='tpr'),
+coords(qda_roc,'best',ret='fpr'),
+coords(qda_roc,'best',ret='precision'),
+auc=auc(qda_roc)
+)
+
+knn_stats <- c(coords(knn_roc,'best',ret='threshold'),
+coords(knn_roc,'best',ret='accuracy'),
+coords(knn_roc,'best',ret='tpr'),
+coords(knn_roc,'best',ret='fpr'),
+coords(knn_roc,'best',ret='precision'),
+auc=auc(knn_roc))
+
+elastic_stats <- c(coords(elastic_roc,'best',ret='threshold'),
+coords(elastic_roc,'best',ret='accuracy'),
+coords(elastic_roc,'best',ret='tpr'),
+coords(elastic_roc,'best',ret='fpr'),
+coords(elastic_roc,'best',ret='precision'),
+auc=auc(elastic_roc))
+
+rf_stats <- c(coords(rf_roc,'best',ret='threshold'),
+coords(rf_roc,'best',ret='accuracy'),
+coords(rf_roc,'best',ret='tpr'),
+coords(rf_roc,'best',ret='fpr'),
+coords(rf_roc,'best',ret='precision'),
+auc=auc(rf_roc))
+
+svm_stats <- c(coords(svm_roc,'best',ret='threshold'),
+coords(svm_roc,'best',ret='accuracy'),
+coords(svm_roc,'best',ret='tpr'),
+coords(svm_roc,'best',ret='fpr'),
+coords(svm_roc,'best',ret='precision'),
+auc=auc(svm_roc))
+
+cv_table<-rbind.data.frame(GLM=glm_stats,
+      QDA=qda_stats,
+      LDA=lda_stats,
+      KNN=knn_stats,
+      PLR=elastic_stats,
+      RF=rf_stats,
+      SVM=svm_stats)
+cv_table
+```
+
+
+# Conclusions
+
+### Conclusion \#1 
+The following is a brief analysis of each method's traits, the sources of which are seen above in the CV table.
+Accuracy: very good for all but LDA
+tpr: very good for GLM, LDA, and KNN
+fpr: very good for all but LDA
+precision: very good for QDA, KNN, and PLR
+auc: very good for GLM, LDA, and KNN
+
+GLM had good standings in all of the categories except for threshold and precision, which were both very low. 
+QDA had good precision and accuracy, but had a poorer true positive rate and area under the curve than the other models.
+LDA had a low accuracy rate, high false positive rate, and terrible precision.
+KNN appears to be the best all-around model, and boasts very good AUC, very good precision, a very low false positive rate, a very high true positive rate, and very good accuracy. 
+PLR also did well in most columns, but had a lower true positive rate than most of the other models. 
+
+Based on the cross validation performance statistics, KNN looks to be the most well rounded and efficient model of the 5 that I analyzed, hinting at a non-linear relationship. Furthermore, we find k=5 to be the best possible tuning parameter in the model, as is mentioned earlier in the analysis. 
+
+
+### Conclusion \#2
+Although it was hard to answer this question until I recieved the results of the project, I do believe that this analysis would have been effective in helping save human lives during the displacement crisis. There would obviously have to be further testing of the results, modifications, and maybe even hypothesis testing, but from what I can tell this is probably a similar technique to what those helping out in 2010 used.
+Seeing the results and statistics of the cross validation back up my claim that this would be useful in such a situation. While some models were clearly superior to others, the accuracies, true/false positive rates, auc, and precision (excluding some of LDA's results) were pretty decent. In a choice between searching hundreds of thousands images by hand, or using this algorithm, I would think that a first draft algorithm with accuracy and precision in the high 90s would be useful in detecting the presence of blue tarps at a quick rate. Again, this could probably be made more useful if we were able to test this out and look at trends of the false positive/false negative results in the code. Maybe there are different shades of blue that we could specify is water/blue paint/etc. Or maybe there are patterns that are unique to the tarps. If we were able to train our model in these areas, I am sure we could make it even more effective, but for now I do believe that it would be a great first step in saving human lives, should a similar crisis occur. 
+
+
+### Conclusion \#3
+
+As I briefly mention in conclusion #2, I think that there are several different techniques that could further advance the results of this algorithm. Again, I think that additional information about the colors/designs within the images may help to improve type one and type two errors in the analysis (ex: certain patterns on tarps, all tarps only certain shades of blue). Similarly, I think that seeing some of the data that the algorithm outputs could help us catch any potential errors. In other words, even though it appears that the algorithm is outputting correctly, I would like to run it with real data to make sure it is accomplishing the correct tasks. 
+Additionally, there are probably certain areas of my code that could be simplified to speed up the algorithm. Right now, even with this dataset, R is taking a good while to output the data for some of the models. I wonder if there are any areas that could have the code improved in, so simplify it and maybe even improve it's time complexity. Lastly, I think that further comparison of the models could be beneficial, just in case certain tuning parameters may not be performing as well as they should be. 
+
+
+
+
+# Hold-out Data / EDA
+```{r}
+library('ggplot2')
+library('dplyr')
+library('boot')
+library('stringr')
+library('caret')
+library('pROC')
+library('glmnet')
+library(randomForest)
+library(e1071)
+library(readr)
+library(tibble)
+files_list <- list.files(path = "~/git/sys-6018/Hold+Out+Data/", recursive = TRUE,
+                            pattern = ".txt", 
+                            full.names = TRUE)
+data1 <- read_table(file='/home/drake/git/sys-6018/Hold+Out+Data//orthovnir057_ROI_NON_Blue_Tarps.txt',
+                    col_names=TRUE,
+                    skip=7)
+# Tarp definition by RGB value
+
+# for (f in files_list[c(3:8)]) {
+#   a <- read_table(file=f,
+#                     col_names=TRUE,
+#                     skip=7)
+#   data1 <- rbind(data1, a)
+# }
+# data1 <- data1[-1] # drop null values here
+# colnames(data1)
+# attach(data1)
+# summary(data1)
+# 
+# # Blue tarp detection here
+# # If primary color is blue, label as blue tarp
+# data1$tarp <- ifelse((data1['B2'] > data1['B3']) & (data1['B2'] > data1['B1']), 'BLUE', 'NOT_BLUE')
+# data1$tarp <- as.factor(data1$tarp)
+# 
+# data1 <- na.omit(data1)
+# which(is.na(data1)) # rm na values
+
+
+notarp1 <- read_table(file=files_list[1],
+                    col_names=TRUE,
+                    skip=7) %>% add_column(tarp = 'NO_TARP')
+notarp2 <- read_table(file=files_list[4],
+                    col_names=TRUE,
+                    skip=7)%>% add_column(tarp = 'NO_TARP')
+notarp3 <- read_table(file=files_list[6],
+                    col_names=TRUE,
+                    skip=7)%>% add_column(tarp = 'NO_TARP')
+notarp4 <- read_table(file=files_list[8],
+                    col_names=TRUE,
+                    skip=7)%>% add_column(tarp = 'NO_TARP')
+yestarp1 <- read_table(file=files_list[2],
+                    col_names=TRUE,
+                    skip=7)%>% add_column(tarp = 'TARP')
+yestarp2 <- read_table(file=files_list[3],
+                    col_names=TRUE,
+                    skip=7)%>% add_column(tarp = 'TARP')
+yestarp3 <- read_table(file=files_list[5],
+                    col_names=TRUE,
+                    skip=7)%>% add_column(tarp = 'TARP')
+yestarp4 <- read_table(file=files_list[7],
+                    col_names=TRUE,
+                    skip=7)%>% add_column(tarp = 'TARP')
+
+
+data1 <- rbind(notarp1, notarp2, notarp3, notarp4, yestarp2, yestarp3, yestarp4)
+data1 <- data1[-1]
+data1 <- na.omit(data1)
+which(is.na(data1)) # rm na values
+
+colnames(data1)
+data1 <- data1 %>%
+  rename(
+    Red = B1,
+    Green = B2,
+    Blue = B3
+  ) %>%
+  select(
+    -c('Lat', 'Lon', 'Map X', 'Map Y', 'X', 'Y')
+  )
+
+# randomize rows
+data1 <- data1[sample(1:nrow(data1)), ]
+data1 <- data1[1:150000,]
+
+data1$tarp <- as.factor(data1$tarp)
+data1$Red <- as.integer(data1$Red)
+data1$Blue <- as.integer(data1$Blue)
+data1$Green <- as.integer(data1$Green)
+```
+
+## Setup
+```{r}
+set.seed(311)
+index <- createDataPartition(y=data1$tarp,
+                             times=1,
+                             p=0.5,
+                             list=FALSE)
+train <- data1[index, ]
+test <- data1[-index, ]
+
+```
+
+## Logistic Regression
+```{r}
+set.seed(311)
+fit_glm <- glm(tarp ~ .-ID,
+                family='binomial',
+                data=data1)
+summary(fit_glm)
+
+# Crossval
+ctrl <- trainControl(method='cv',
+                     number=5,
+                     savePredictions = TRUE)
+logmod <- train(tarp~.-ID,
+                data=train,
+                method='glm',
+                trControl=ctrl)
+logmod$results
+
+
+# Prediction
+glm_predict <- predict(fit_glm,
+                    newdata=test,
+                    family='binomial',
+                    type='response')
+
+# error rate
+glm_err <- mean(ifelse(glm_predict>=.5,
+            'tarp',
+            'no_tarp')==test$tarp)
+glm_err
+
+# Confusion matrix
+# glm_table <- table(Predicted = ifelse(pred_glm>=.5,
+#                          'Blue Tarp Present',
+#                          'No Blue Tarp Present'),
+#                           True = test$tarp)
+# glm_table
+# Optimal thresholds are calculated later in the analysis. For now I am keeping p=0.5.
+
+# roc
+glm_roc<-roc(test$tarp,glm_predict)
+plot(glm_roc)
+auc(glm_roc)
+
+```
+
+## LDA
+```{r}
+set.seed(311)
+LDA <- MASS::lda(tarp ~ Red + Green + Blue,
+           data=data1,
+           family='binomial')
+
+### cross validation
+ctrl <- trainControl(method='cv',
+                     number=7)
+ldamod <- train(tarp ~ Red + Green + Blue,
+                data=data1,
+                method='lda',
+                trControl=ctrl)
+
+# prediction
+lda_predict <- predict(LDA,
+        family='binomial',
+        type='response',
+        newdata=test)
+summary(lda_predict)
+
+# confusion matrix
+confusionMatrix(test$tarp,
+                lda_predict$class)
+
+
+# roc
+lda_roc <- roc(test$tarp,lda_predict$x)
+plot(lda_roc)
+auc(lda_roc)
+
+```
+
+## QDA
+```{r}
+set.seed(311)
+QDA <- MASS::qda(tarp ~ Red + Green + Blue,
+                    data=data1,
+                    family='binomial')
+
+### cross validation
+ctrl <- trainControl(method='cv',
+                     number=7)
+qdamod <- train(tarp~ Red+Green + Blue,
+                data=data1,
+                method = 'qda',
+                trControl=ctrl)
+
+# prediction
+qda_predict <- predict(QDA,
+        family='binomial',
+        type='response',
+        newdata=test)
+summary(qda_predict)
+
+# confusion matrix
+confusionMatrix(test$tarp,
+                qda_predict$class)
+
+# roc
+qda_roc <- roc(test$tarp, as.numeric(qda_predict$class))
+plot(qda_roc)
+auc(qda_roc)
+
+```
+
+## KNN
+```{r KNN, echo=TRUE}
+KNN <- knn3(tarp~.-ID,
+            data=train)
+
+# cross validation
+ctrl <- trainControl(method='cv',
+                     number=2)
+knn_mod <- train(tarp~.-ID,
+                 method='knn',
+                 data=train,
+                 trControl=ctrl)
+
+# find best k value:
+knnbestval <- knn_mod$bestTune # 5
+KNN_best <- knn3(tarp~.-ID,
+                 data=train,
+                 k=knnbestval) # new best model
+
+
+# prediction
+knn_predict <- predict(KNN_best,
+                       newdata=test, 
+                       type='class')
+
+# confusion matrix
+knn_table <- confusionMatrix(table(predicted=knn_predict,
+                                   actual=test$tarp))
+
+# roc
+knn_roc <- roc(test$tarp,
+               as.numeric(knn_predict))
+plot(knn_roc)
+auc(knn_roc)
+```
+
+## Penalized Logistic Regression (ElasticNet)
+```{r PLR, echo=TRUE}
+# see ISLR 6.9
+
+lm_fit <- lm(formula(tarp~.-ID),
+             data=train)
+
+# cross validation
+set.seed(311)
+ctrl <- trainControl('cv',
+                     number=5)
+elastic_mod <- train(tarp ~.-ID,
+                     data=train,
+                     method='glmnet',
+                     trControl=ctrl)
+
+elastic_mod$bestTune # tuning parameters
+coef(elastic_mod$finalModel,
+     elastic_mod$bestTune$lambda)
+
+elastic_prediction <- predict(elastic_mod, newdata=test)
+
+confusionMatrix(table(predicted=elastic_prediction,
+                      actual=test$tarp))
+
+# roc
+elastic_roc <- roc(test$tarp, as.numeric(elastic_prediction))
+plot(elastic_roc)
+auc(elastic_roc)
+
+```
+
+
+## Random Forest Analysis
+```{r}
+
+rfdata1 <- randomForest(tarp ~ Red + Blue + Green,
+                       data=train,
+                       mtry=2,
+                       ntree=2,
+                       importance=TRUE)
+rfdata1
+set.seed(311)
+
+ctrl <- trainControl(method='cv',
+                     number = 3,
+                     savePredictions=TRUE)
+rfmod <- train(tarp~Red+Blue+Green,
+               data=train,
+               method='rf',
+               trControl=ctrl)
+
+# Tuning
+rfmod$bestTune
+
+# preds
+rf_preds <- predict(rfdata1, 
+                    newdata=test,
+                    family='binomial',
+                    mtry=rfbest,
+                    type='response')
+rf_preds <- as.data.frame(rf_preds)
+rf_preds <- as.factor(rf_preds$rf_preds)
+
+# Confusion Matrix
+confusionMatrix(reference=test$tarp, data=rf_preds)
+
+# roc
+rf_roc <- roc(test$tarp, as.numeric(rf_preds))
+plot(rf_roc)
+auc(rf_roc)
+```
+
+
+## Support Vector Machines
+```{r}
+n = nrow(data)
+set.seed(311)
+# train = sample(n, size=800) %>% sort()
+# test = -train
+
+svm_linear = svm(tarp ~ ., data=train,
+    type = "C-classification",    # ensure classifier
+    kernel = "linear",            # linear kernel
+    cost = .01                    # cost setting
+    )
+tune.out <- tune(svm, tarp~Red+Blue+Green, data=train, 
+                type="C-classification",  kernel = "linear",
+                ranges=list(cost=c(.1, 1, 5, 10, 100, 1000)))
+summary(tune.out)
+fit.best <- tune.out$best.model
+lin_pred <- predict(fit.best, test)
+confusionMatrix(data=lin_pred, reference=test$tarp)
+
+
+svm_polynomial = svm(tarp ~ ., data=train,
+    type = "C-classification",
+    kernel = "polynomial",
+    cost = .01
+)
+poly.tune.out <- tune(svm, tarp~Red+Blue+Green, data=train, 
+                type="C-classification",  kernel = "polynomial",
+                ranges=list(cost=c(.1, 1, 5, 10, 100, 1000)))
+summary(poly.tune.out)
+fit.best <- poly.tune.out$best.model
+poly_pred <- predict(fit.best, test)
+confusionMatrix(data=poly_pred, reference=test$tarp)
+
+
+svm_radial = svm(tarp ~ ., data=train,
+    type = "C-classification",
+    kernel = "radial",
+    cost = .01
+    )
+rad.tune.out <- tune(svm, tarp~Red+Blue+Green, data=train, 
+                type="C-classification",  kernel = "radial",
+                ranges=list(cost=c(.1, 1, 5, 10, 100, 1000)))
+summary(rad.tune.out)
+fit.best <- rad.tune.out$best.model
+rad_pred <- predict(fit.best, test)
+confusionMatrix(data=rad_pred, reference=test$tarp)
+
+svm_comp <- list(tune.out$best.performance,
+                 rad.tune.out$best.performance,
+                 poly.tune.out$best.performance)
+
+svm_comp_df <- as.data.frame(svm_comp)
+colnames(svm_comp_df) <- c('Linear Kernel',
+                           'Radial kernel',
+                           'Polynomial kernel')
+svm_comp_df
+# Linear and Radial are nearly identical in errors. However, linear uses significantly less 
+# support vectors than radial does
+
+svm_best <- rad.tune.out$best.model
+svm_pred <- predict(svm_best, test, decision.values = TRUE)
+svm_fit <- attributes(svm_pred)$decision.values
+confusionMatrix(data=svm_pred,
+                reference=test$tarp)
+
+# roc
+svm_roc <- roc(test$tarp, as.numeric(svm_pred))
+plot(svm_roc)
+auc(svm_roc)
+
+```
+
+
+# Results (Hold-Out)
+
+**Hold-Out Performance Table Here**
+```{r results, echo=TRUE}
+coords(glm_roc,'best',ret='threshold')
+coords(lda_roc,'best',ret='threshold')
+coords(qda_roc,'best',ret='threshold')
+coords(knn_roc,'best',ret='threshold')
+coords(elastic_roc,'best',ret='threshold')
+coords(rf_roc, 'best', ret='threshold')
+coords(svm_roc, 'best', ret='threshold')
+
+# Results (Cross-Validation)
+
+# CV table
+glm_stats <- c(coords(glm_roc,'best',ret='threshold'),
+coords(glm_roc,'best',ret='accuracy'),
+coords(glm_roc,'best',ret='tpr'),
+coords(glm_roc,'best',ret='fpr'),
+coords(glm_roc,'best',ret='precision'),
+auc=auc(glm_roc)
+)
+
+lda_stats <- c(coords(lda_roc,'best',ret='threshold'),
+coords(lda_roc,'best',ret='accuracy'),
+coords(lda_roc,'best',ret='tpr'),
+coords(lda_roc,'best',ret='fpr'),
+coords(lda_roc,'best',ret='precision'),
+auc=auc(lda_roc)
+)
+
+qda_stats <- c(coords(qda_roc,'best',ret='threshold'),
+coords(qda_roc,'best',ret='accuracy'),
+coords(qda_roc,'best',ret='tpr'),
+coords(qda_roc,'best',ret='fpr'),
+coords(qda_roc,'best',ret='precision'),
+auc=auc(qda_roc)
+)
+
+knn_stats <- c(coords(knn_roc,'best',ret='threshold'),
+coords(knn_roc,'best',ret='accuracy'),
+coords(knn_roc,'best',ret='tpr'),
+coords(knn_roc,'best',ret='fpr'),
+coords(knn_roc,'best',ret='precision'),
+auc=auc(knn_roc))
+
+elastic_stats <- c(coords(elastic_roc,'best',ret='threshold'),
+coords(elastic_roc,'best',ret='accuracy'),
+coords(elastic_roc,'best',ret='tpr'),
+coords(elastic_roc,'best',ret='fpr'),
+coords(elastic_roc,'best',ret='precision'),
+auc=auc(elastic_roc))
+
+rf_stats <- c(coords(rf_roc,'best',ret='threshold'),
+coords(rf_roc,'best',ret='accuracy'),
+coords(rf_roc,'best',ret='tpr'),
+coords(rf_roc,'best',ret='fpr'),
+coords(rf_roc,'best',ret='precision'),
+auc=auc(rf_roc))
+
+svm_stats <- c(coords(svm_roc,'best',ret='threshold'),
+coords(svm_roc,'best',ret='accuracy'),
+coords(svm_roc,'best',ret='tpr'),
+coords(svm_roc,'best',ret='fpr'),
+coords(svm_roc,'best',ret='precision'),
+auc=auc(svm_roc))
+
+cv_table2<-rbind.data.frame(GLM=glm_stats,
+      QDA=qda_stats,
+      LDA=lda_stats,
+      KNN=knn_stats,
+      PLR=elastic_stats,
+      RF=rf_stats,
+      SVM=svm_stats)
+```
+
+# Final Comparison
+## Original CV Table
+```{r}
+cv_table
+```
+
+## Holdout data CV table
+```{r}
+cv_table2
+```
+
+## Difference between original and holdout data
+```{r}
+cv_table2 - cv_table
+```
+
+## Average between both tests
+```{r}
+(cv_table2 + cv_table)/2
+
+```
+
+
+# Final Conclusions
+
+### Conclusion \#1 
+In part 1, after having analyzed exclusively the original testing and training data, I came to the conclusion that KNN was the best performing algorithm in terms of accuracy for predicting whether a blue tarp is present in an aerial photograph of the ground or not. Using K=5 as the tuning parameter, KNN was the most well rounded model, having the highest accuracy as well as a very high true positive rate. After adding in Random Forest and SVM, one could argue that random forest should be chosen over KNN. Both have nearly identical accuracy, very close true positive rates (KNN is slightly higher), as well as nearly very similar false positive rates, precision, and auc.  
+When run with the real data, I was able to rule out LDA because of low accuracy, and also dropped QDA and PLR because of low true positive rates. This left GLM, KNN, RF, and SVM. All four of these models had above a 99.6% accuracy. However, when looking at true positive rates, GLM (99.63%) outperformed the KNN(95.05%), RF(92.31%), and SVM(96.34%). This near perfect true positive rate paired well with it's high accuracy, leading me to believe that GLM was the best performing model with the holdout data. 
+
+
+
+### Conclusion \#2
+Because of the techniques used in this overall analysis, I can say with confidence that my findings are consistent, compatible, and reconcilable. In part one, we used cross validation as our primary means of finding the best model for the data. Before any algorithm was analyzed, the data was partitioned and divided into a test and a training data set. Doing so minimizes potential error in the results and is a very important part of machine learning. I was able to use a train/test split because of the large size of the dataset. After this, for each algorithm, the training data was used to train the developing model. After training was concluded and I had a fitted model, I used the test dataset on the trained model to verify it's ability to provide good predictions on the dataset. In each instance, the test data had never been seen by the model, and was a good indicator of whether or not the model works well. In addition to the train/test cross validation of part one, I reran each tested model on read-in holdout data, and compared the two cross validation tables to check for consistency and accuracy. All these steps lead to me being confident in the compatibility of my findings.
+
+### Conclusion \#3
+As I briefly mentioned in my first conclusion, the severity of this crisis highlights the importance of choosing a reliable algorithm. Because so many lives are at stake, even the smallest faults in data accuracy or reliability could be the difference between a survivor living or dying. This means that accuracy and true positive rate is an extremely important statistic to consider. In other words, it would be much better to have a false positive, and find out that there was no tarp when checked, than have a false negative and risk leaving survivors behind by not detecting their blue tarp. Therefore, when deciding on the best algorithm, I knew I had to choose one that primarily had high accuracy and true positive rate. While this helped to narrow down potential algorithms by focusing mainly on accuracy and true positive rates, I also made sure to check the other relevant statistics in the CV tables to make sure there were no major flaws in these algorithms. These additional stats include false positive rates, precision, threshold, and area under the curve. To illustrate the importance of this, one could imagine a near perfect algorithm while just looking at true positive rates and accuracy. However, if for example it had a terrible false positive rate, then all these useless false positives could take valuable time to sort through in a time sensitive situation such as this. To put in simple terms, I chose my preferred algorithm by prioritizing accuracy and true positive rate, while making sure fpr, precision, and auc were also good. 
+By using this criteria, and as is mentioned in Conclusion #1, I recommend using GLM as the primary algorithm for use in detecting blue tarps, because of how well it performed on both the training data and the holdout datasets. While I believe several other algorithms could also be effectively used (see later conclusion section), I determined GLM to be the most effective in ability to detect blue tarps, as well as save survivors' lives, when compared to the other algorithms. 
+
+
+
+### Conclusion \#4 
+Because of the nature of this problem, some metrics were more applicable to the goal of this project than others were. This has been mentioned several times in the first 3 conclusions, but I will reiterate my thoughts here. Because it is much more important to prevent false negatives than to prevent false positives, a high true positive rate is very important when choosing which algorithm to use. Additionally, a high accuracy is also important, since we want the model to measure as close as possible to the true value, which is the blue tarp in this situation. I consider area under the curve to be important, but not as important as the prior two measures. It is an important measurement in distinguishing between positive and negative classes, and the overall performance of the model. False positive rate was not nearly as important as true positive rate, but I would not choose a model with a very low false positive rate, since this would add extra useless data into a time sensitive situation, where sorting through garbage data could delay rescue missions. Precision and threshold were considered, but did not play huge roles in my determination of the best algorithm, when compared with the weightings of the other measures.
+
+### Conclusion \#5
+I believe that this analysis would have been effective in helping save human lives during the displacement crisis. There would obviously have to be further testing of the results, modifications, and maybe even hypothesis testing, but from what I can tell this is probably a similar technique to what those helping out in 2010 used.
+The results and statistics of the cross validation back up my claim that this would be useful in such a situation. While some models were clearly superior to others, the accuracies, true/false positive rates, auc, and precision (excluding some of LDA's results) were pretty decent. In a choice between searching hundreds of thousands images by hand, or using this algorithm, I would think that a first draft algorithm with accuracy and precision in the high 90s would be useful in detecting the presence of blue tarps at a quick rate. Again, this could probably be made more useful if we were able to test this out and look at trends of the false positive/false negative results in the code. Maybe there are different shades of blue that we could specify is water/blue paint/etc. Or maybe there are patterns that are unique to the tarps. If we were able to further train our model in these areas with additional data, I am sure we could make it even more effective, but for now I do believe that it would be a great first step in saving human lives, should a similar crisis occur. 
+
+### Conclusion \#6
+I think that there are several different techniques that could further advance the results of this algorithm. Again, I think that additional information about the colors/designs within the images may help to improve type one and type two errors in the analysis (ex: certain patterns on tarps, all tarps only certain shades of blue). 
+I did see a large improvement after using the holdout data. At the end of part one, I noted that I wished I could use a larger dataset of real data to test the trained models that I made. This was accomplished in part two by running each model with the holdout data. This allowed me to further check the consistency and accuracy. 
+Additionally, there are probably certain areas of my code that could be simplified to speed up the algorithm. Right now, even with this dataset, R is taking a good while to output the data for some of the models. I wonder if there are any areas that could have the code improved in, to simplify it and maybe even improve it's time complexity. 
+
+
+### Conclusion \#7
+One question I find myself wondering at the end of this project is how effective the next few algorithms would be in this situation. In other words, I ended up choosing GLM as my primary model, but how well would KNN, Random Forest, or Support Machine Vectors work. All four of these models had extremely high accuracy and very high true positive rates when looking at each one individually. There were no extremely bad categories for any of these four models. Through this mindset, I wonder whether or not there could really be an arbitrary answer of how many more lives GLM could save in comparison to the other couple of models that also had very high marks. With the randomness of life, and of this crisis, I wonder if these small statistical differences would make much of a difference in detecting blue tarps or not. 
