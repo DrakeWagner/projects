@@ -1,14 +1,14 @@
 # msds-projects
 
 ### *Disaster Relief Project*
-file name: disaster_relief_proj.Rmd
+(disaster_relief_proj.Rmd)<p>
 
 ### *Natural Language Processing Project*
-file name: nlp.proj -> sentiment_analysis.ipynb
+(nlp.proj -> sentiment_analysis.ipynb) <p>
 
 ### *NBA Game Outcome Simulator*
-file name: pyspark_proj.zip
+(pyspark_proj.zip)<p>
 
 ### *SQL Mini Project*
-file name: sql_db_mini_proj.ipynb
+(sql_db_mini_proj.ipynb)<p>
  
