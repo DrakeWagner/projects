@@ -11,8 +11,8 @@ import os
 
 
 ### Load in Spotify API credentials here 
-os.chdir('C:\\Users\\dwagn\\Desktop')
-dotenv.load_dotenv()
+os.chdir('C:\\Users\\dwagn\\git\\projects')
+dotenv.load_dotenv('C:\\Users\\dwagn\\Desktop\\.env')
 CLIENT_ID = os.getenv('spotify-client-id')
 CLIENT_SECRET = os.getenv('spotify-client-secret')
 os.chdir('C:\\Users\\dwagn\\git\\projects')
@@ -39,10 +39,17 @@ except:
 headers = {'Authorization': 'Bearer {}'.format(access_token)}
 url = 'https://api.spotify.com/v1/'    
 
-artist_share_url = input('Paste artist spotify share link: ')
-artist_id = artist_share_url.split('/')[4].split('?')[0]
-print(artist_id)
-    
+# Check link and retrieve artist id
+while True:
+    artist_share_url = input('Paste artist spotify share link: ')
+    try:
+        artist_id = artist_share_url.split('/')[4].split('?')[0]
+        int(len(artist_id)) > 0
+        break
+    except:
+        print('invalid URL')
+
+# Save album info to variable
 albums = requests.get(url + 'artists/' + artist_id + '/albums', 
                  headers=headers, 
                  params={'include_groups': 'album', 'limit': 50}).json()
@@ -52,10 +59,9 @@ for album in albums['items']:
     album_names_dates[album['name']] = album['release_date']
 
 artist_name = requests.get(url + 'artists/' + artist_id, headers=headers).json()['name']
-
+print('Successfully accessed {}'.format(artist_name))
 
 ### Gather Track Info
-%%time
 track_info = []
 repeat_detection = []
 
@@ -80,7 +86,7 @@ for i in albums['items']:
         
     print('{} added...'.format(i['name']))
     
-    
+df = pd.DataFrame(track_info)
 df['release_date'] = pd.to_datetime(df['release_date'])
 cols = df.columns.tolist()
 cols = cols[-4:] + cols[:-4] # Last 4 columns to front
@@ -186,6 +192,7 @@ ax = sns.scatterplot(data=by_album,
                  hue='album_name',
                  palette='Set1')
 
+h,labs = ax.get_legend_handles_labels()
 ax.legend(h[1:len(album_names_dates)+1], 
           labs[1:int(len(album_names_dates))+1], loc='best', title=None)
 
@@ -210,5 +217,6 @@ sns.set_style("ticks")
 plt.xlabel(var1, size=15)
 plt.ylabel(var2, size=15)
 
+h,labs = ax.get_legend_handles_labels()
 ax.legend(h[1:len(album_names_dates)+1], 
           labs[1:int(len(album_names_dates))+1], loc='best', title='Albums')
