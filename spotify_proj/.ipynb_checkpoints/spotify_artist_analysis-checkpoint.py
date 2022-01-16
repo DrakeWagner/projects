@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 # %matplotlib inline
 import seaborn as sns
 import dotenv
-# from dotenv import load_dotenv
 import os
 
 
@@ -61,30 +60,46 @@ for album in albums['items']:
 artist_name = requests.get(url + 'artists/' + artist_id, headers=headers).json()['name']
 print('Successfully accessed {}'.format(artist_name))
 
+
+# check duplicates
+albs_added = []
+to_remove = []
+
+for i in range(len(albums['items'])):
+    alb_name = albums['items'][i]['name']
+    if alb_name in albs_added:
+        to_remove.append(i)
+    albs_added.append(alb_name)
+
 ### Gather Track Info
 track_info = []
 repeat_detection = []
+iter = 0
 
 for i in albums['items']:
-
-    r = requests.get(url + 'albums/' + i['id'] + '/tracks', 
-        headers=headers)
-    tracks = r.json()['items']
     
-    for track in tracks:
-        detailsr = requests.get(url + 'audio-features/' + track['id'], headers=headers).json()
+    if iter not in to_remove:
+
+        r = requests.get(url + 'albums/' + i['id'] + '/tracks', 
+            headers=headers)
+        tracks = r.json()['items']
+
+        for track in tracks:
+            detailsr = requests.get(url + 'audio-features/' + track['id'], headers=headers).json()
+
+            # combine with album info
+            detailsr.update({
+                'track_name': track['name'],
+                'album_name': i['name'],
+                'album_id': i['id'],
+                'release_date': i['release_date']
+            })
+
+            track_info.append(detailsr)
+        print('{} added...'.format(i['name']))
         
-        # combine with album info
-        detailsr.update({
-            'track_name': track['name'],
-            'album_name': i['name'],
-            'album_id': i['id'],
-            'release_date': i['release_date']
-        })
-        
-        track_info.append(detailsr)
-        
-    print('{} added...'.format(i['name']))
+    iter += 1
+
     
 df = pd.DataFrame(track_info)
 df['release_date'] = pd.to_datetime(df['release_date'])
