@@ -25,7 +25,8 @@ We were able to use our model to predict the winning team 87.2% of the time.
  
 
 ### *SQL Mini Project*
-(sql_db_mini_proj.ipynb)<p>
-A small project that includes the creation of a small database for the domain, adding an ER diagram and schema, populating the tables using python, and finally testing several self-created queries.
+(sql_db_mini_proj.ipynb, sql_local_queries_examples.ipynb)<p>
+A small class project that includes the creation of a small database for the domain, adding an ER diagram and schema, populating the tables using python, and finally testing several self-created queries. The second file listed above includes several addition examples of SQL queries.
+
 
 
