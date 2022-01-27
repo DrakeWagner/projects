@@ -9,8 +9,6 @@ By training 6 different models (GLM, LDA, QDA, KNN, PLR, RF), I was able to conc
 ### *Spotify Artist Analysis*
 
  
- 
- 
 ### *Natural Language Processing Project*
 (nlp.proj -> sentiment_analysis.ipynb) <p>
 The goal of this project was to create a digital critical edition of a corpus to support exploration of various contents of the text, such as language used, social events, cultural categories, sentiments, indentity, taste, etc. There were several steps I did to achieve this. First, I converted my collection of long-form text from their original formats into a set of tables that conformed to the Standard Text Analytic Data Model, and to the Machine Learning Corpus Format (two ETA standard designs). Next I annotated the tables with statistical and linguistic features using NLP libraries such as NLTK. Next, I created a vector representation of the corpus to generate TFIDF values to add to the Token and Vocab tables. I then extended the annotated and vectorized model with tables and features derived from the application of various unsupervised methods, including PCA, LDA, and word2vec. I expored the results using statistical and visualization methods, and finally made several conclusions about cultural patterns observed in the corpus. <p>
@@ -22,6 +20,11 @@ The goal of this project was to create a digital critical edition of a corpus to
 
 The creation of this project was done through PySpark, a Python API for Apache Spark. Various steps included data preprocessing, data splitting/sampling, exploratory data analyisis, model construction of several models, and model evaluation. Specifically, we used a benchmark model (our baseline regression model) and a more sophisticated (champion) model. Due to the nature of the data some extra steps were needed in creating the model, such as dummy variable construction, feature scaling, handling missing values/outliers, handling semi-structured and unstructured data, and performing dimensionality reduction via PCA. Data splitting and K-fold cross validation of hyperparameters were also utilized. In evaluating the model, we looked at R-squared for our single factor model, and accuracy, precision, recall, F1 score, confusion matrices, and AUROC. We also ran a sensitivity analysis, measuring the effect of changing the model inputs or parameters. Lastly, a report was written up on our findings. <p>
 We were able to use our model to predict the winning team 87.2% of the time.
+ 
+ 
+### *Middle School Analysis*
+(r_middle_school_analysis)<p>
+A data analysis project using Spark. The goal of this project was to illustrate the effectiveness of an assessment system implemented within two different school systems. This study answered questions about the relationship between the schools' program effectiveness, whether there were any significant correlations with success rate within the program, and predictions about the futures of the program at each school. Findings are discussed in my analysis write-up.
  
 
 ### *SQL Mini Project*
