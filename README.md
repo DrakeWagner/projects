@@ -1,4 +1,7 @@
-# msds-projects
+# msds-projects 
+
+### *databricks_pyspark_examples (folder)*
+This folder contains several different projects I performed through Spark and databricks. Topics cover machine learning, delta lakes and lake houses, graphx, clustering analyses, model training and testing, recommender system analysis, and classification.
 
 ### *Disaster Relief Project*
 (disaster_relief_proj.Rmd)<p>
