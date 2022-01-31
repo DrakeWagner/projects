@@ -10,6 +10,8 @@ The goal of this project was to use various classification methods to solve a re
 By training 6 different models (GLM, LDA, QDA, KNN, PLR, RF), I was able to conclude via cross validation that KNN (k=6) was the most efficient and accurate model for detecting displaced persons, given the circumstances of the situation.
  
 ### *Spotify Artist Analysis*
+(spotify_proj -> spotify.ipynb) <p>
+As a huge music person, I decided to create an customizable analysis of artists of Spotify, using the company's API. This script showcases the ability to input any artist via their Spotify share link to learn more about their style of music, such as their sounds, album lengths, largest correlations in sound statistics, etc. The data is then either graphed or presented in a dataframe. I'm very happy with how this turned out, especially since it is able to work with any artist available on Spotify.
 
  
 ### *Natural Language Processing Project*
