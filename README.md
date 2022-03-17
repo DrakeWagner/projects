@@ -19,7 +19,6 @@ As a huge music person, I decided to create an customizable analysis of artists 
 The goal of this project was to create a digital critical edition of a corpus to support exploration of various contents of the text, such as language used, social events, cultural categories, sentiments, indentity, taste, etc. There were several steps I did to achieve this. First, I converted my collection of long-form text from their original formats into a set of tables that conformed to the Standard Text Analytic Data Model, and to the Machine Learning Corpus Format (two ETA standard designs). Next I annotated the tables with statistical and linguistic features using NLP libraries such as NLTK. Next, I created a vector representation of the corpus to generate TFIDF values to add to the Token and Vocab tables. I then extended the annotated and vectorized model with tables and features derived from the application of various unsupervised methods, including PCA, LDA, and word2vec. I expored the results using statistical and visualization methods, and finally made several conclusions about cultural patterns observed in the corpus. <p>
  
 
-
 ### *NBA Game Outcome Simulator*
 (pyspark_proj.zip)<p>
 
@@ -35,6 +34,7 @@ A data analysis project using Spark. The goal of this project was to illustrate 
 ### *SQL Mini Project*
 (sql_db_mini_proj.ipynb, sql_local_queries_examples.ipynb)<p>
 A small class project that includes the creation of a small database for the domain, adding an ER diagram and schema, populating the tables using python, and finally testing several self-created queries. The second file listed above includes several addition examples of SQL queries.
+ 
 
 
 
